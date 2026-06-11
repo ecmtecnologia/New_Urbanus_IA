@@ -72,8 +72,8 @@ const Dashboard: React.FC = () => {
             <CheckCircle2 className="w-5 h-5 text-emerald-500" />
             Progresso por Bairro
           </h3>
-          <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-80 w-full min-w-0">
+            <ResponsiveContainer width="100%" height={320} minWidth={0}>
               <BarChart data={neighborhoodData} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
                 <XAxis type="number" hide />
@@ -94,8 +94,8 @@ const Dashboard: React.FC = () => {
             <TrendingUp className="w-5 h-5 text-emerald-500" />
             Crescimento da Base Registrada
           </h3>
-          <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-80 w-full min-w-0">
+            <ResponsiveContainer width="100%" height={320} minWidth={0}>
               <LineChart data={timelineData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                 <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />

@@ -109,6 +109,7 @@ const LoginModule: React.FC = () => {
                     <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
                     <input 
                       type="email" 
+                      autoComplete="username"
                       className="w-full pl-12 pr-4 py-4 bg-slate-50 border-none rounded-2xl text-slate-700 font-bold focus:ring-2 focus:ring-emerald-500 transition-all outline-none shadow-sm group-hover:bg-slate-100"
                       placeholder="seu.nome@municipio.gov.br"
                       value={email}
@@ -123,6 +124,7 @@ const LoginModule: React.FC = () => {
                     <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
                     <input 
                       type="password" 
+                      autoComplete="current-password"
                       minLength={6}
                       required
                       className="w-full pl-12 pr-4 py-4 bg-slate-50 border-none rounded-2xl text-slate-700 font-bold focus:ring-2 focus:ring-emerald-500 transition-all outline-none shadow-sm group-hover:bg-slate-100"
