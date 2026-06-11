@@ -4,7 +4,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import multer from 'multer';
 import { z } from 'zod';
-import { requireAuth } from '../auth';
+import { requireAuth, requireRoles } from '../auth';
 import { getDbPool, insertSecurityAuditLog } from '../db';
 
 const familyMemberSchema = z.object({
@@ -71,6 +71,21 @@ const occupantUploadSchema = z.object({
   document_number: z.string().optional(),
 });
 
+const gedStatusUpdateSchema = z.object({
+  status: z.enum(['Pendente', 'Em análise', 'Em analise', 'Aprovado', 'Rejeitado']),
+  reason: z.string().max(500).optional(),
+});
+
+const allowedMimeTypes = new Set(['application/pdf', 'image/png', 'image/jpeg', 'image/webp']);
+const maxUploadSizeBytes = 15 * 1024 * 1024;
+
+const allowedGedStatusTransitions: Record<string, string[]> = {
+  Pendente: ['Em análise', 'Rejeitado'],
+  'Em análise': ['Aprovado', 'Rejeitado', 'Pendente'],
+  Aprovado: [],
+  Rejeitado: ['Em análise'],
+};
+
 const uploadRoot = path.resolve(process.cwd(), 'uploads', 'occupants');
 fs.mkdirSync(uploadRoot, { recursive: true });
 
@@ -84,6 +99,35 @@ const storage = multer.diskStorage({
 });
 
 const upload = multer({ storage });
+
+function normalizeGedStatus(status: string): 'Pendente' | 'Em análise' | 'Aprovado' | 'Rejeitado' {
+  if (status === 'Em analise') {
+    return 'Em análise';
+  }
+  return status as 'Pendente' | 'Em análise' | 'Aprovado' | 'Rejeitado';
+}
+
+function validateUploadedFile(file: Express.Multer.File): string | null {
+  if (!allowedMimeTypes.has(file.mimetype)) {
+    return 'Unsupported file type. Allowed: PDF, PNG, JPG, WEBP.';
+  }
+
+  if (file.size > maxUploadSizeBytes) {
+    return 'File too large. Max allowed size is 15MB.';
+  }
+
+  return null;
+}
+
+function removeUploadedFileSafe(filePath: string): void {
+  try {
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  } catch {
+    // best-effort cleanup
+  }
+}
 
 async function hydrateOccupants(db: any, occupants: any[]) {
   if (!occupants.length) {
@@ -166,7 +210,7 @@ async function hydrateOccupants(db: any, occupants: any[]) {
 export const familiesRouter = Router();
 familiesRouter.use(requireAuth);
 
-familiesRouter.get('/occupants', async (req, res) => {
+familiesRouter.get('/occupants', requireRoles(['SOCIAL', 'JURIDICO', 'TECNICO']), async (req, res) => {
   const queryParsed = listOccupantsQuerySchema.safeParse(req.query);
   if (!queryParsed.success) {
     return res.status(400).json({ error: 'Invalid query params.', details: queryParsed.error.flatten() });
@@ -210,7 +254,7 @@ familiesRouter.get('/occupants', async (req, res) => {
   return res.json({ items });
 });
 
-familiesRouter.get('/occupants/:id', async (req, res) => {
+familiesRouter.get('/occupants/:id', requireRoles(['SOCIAL', 'JURIDICO', 'TECNICO']), async (req, res) => {
   const db = getDbPool();
   if (!db) return res.status(503).json({ error: 'Database unavailable.' });
 
@@ -230,7 +274,7 @@ familiesRouter.get('/occupants/:id', async (req, res) => {
   return res.json(items[0]);
 });
 
-familiesRouter.post('/occupants', async (req, res) => {
+familiesRouter.post('/occupants', requireRoles(['SOCIAL']), async (req, res) => {
   const parsed = occupantSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: 'Invalid occupant payload.', details: parsed.error.flatten() });
@@ -368,7 +412,7 @@ familiesRouter.post('/occupants', async (req, res) => {
   }
 });
 
-familiesRouter.put('/occupants/:id', async (req, res) => {
+familiesRouter.put('/occupants/:id', requireRoles(['SOCIAL']), async (req, res) => {
   const parsed = occupantSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: 'Invalid occupant payload.', details: parsed.error.flatten() });
@@ -381,7 +425,7 @@ familiesRouter.put('/occupants/:id', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    const { id } = req.params;
+    const id = String(req.params.id);
     const payload = parsed.data;
     const updateResult = await client.query(
       `UPDATE occupants
@@ -527,7 +571,7 @@ familiesRouter.put('/occupants/:id', async (req, res) => {
   }
 });
 
-familiesRouter.delete('/occupants/:id', async (req, res) => {
+familiesRouter.delete('/occupants/:id', requireRoles(['SOCIAL']), async (req, res) => {
   const db = getDbPool();
   if (!db) return res.status(503).json({ error: 'Database unavailable.' });
 
@@ -540,7 +584,7 @@ familiesRouter.delete('/occupants/:id', async (req, res) => {
     userId: req.user?.id,
     action: 'family.occupant.delete',
     resource: 'occupant',
-    resourceId: req.params.id,
+    resourceId: String(req.params.id),
     status: 'success',
     ipAddress: req.ip,
   });
@@ -548,7 +592,7 @@ familiesRouter.delete('/occupants/:id', async (req, res) => {
   return res.status(204).send();
 });
 
-familiesRouter.get('/occupants/:id/ged-documents', async (req, res) => {
+familiesRouter.get('/occupants/:id/ged-documents', requireRoles(['SOCIAL', 'JURIDICO', 'TECNICO']), async (req, res) => {
   const db = getDbPool();
   if (!db) return res.status(503).json({ error: 'Database unavailable.' });
 
@@ -583,7 +627,7 @@ familiesRouter.get('/occupants/:id/ged-documents', async (req, res) => {
   return res.json({ items: result.rows });
 });
 
-familiesRouter.get('/occupants/:id/ged-documents/:gedDocumentId/versions', async (req, res) => {
+familiesRouter.get('/occupants/:id/ged-documents/:gedDocumentId/versions', requireRoles(['SOCIAL', 'JURIDICO', 'TECNICO']), async (req, res) => {
   const db = getDbPool();
   if (!db) return res.status(503).json({ error: 'Database unavailable.' });
 
@@ -620,12 +664,18 @@ familiesRouter.get('/occupants/:id/ged-documents/:gedDocumentId/versions', async
   return res.json({ items: versions.rows });
 });
 
-familiesRouter.post('/occupants/:id/documents/upload', upload.single('file'), async (req, res) => {
+familiesRouter.post('/occupants/:id/documents/upload', requireRoles(['SOCIAL']), upload.single('file'), async (req, res) => {
   const db = getDbPool();
   if (!db) return res.status(503).json({ error: 'Database unavailable.' });
 
   if (!req.file) {
     return res.status(400).json({ error: 'Missing file.' });
+  }
+
+  const uploadValidationError = validateUploadedFile(req.file);
+  if (uploadValidationError) {
+    removeUploadedFileSafe(req.file.path);
+    return res.status(400).json({ error: uploadValidationError });
   }
 
   const parsed = occupantUploadSchema.safeParse(req.body);
@@ -756,12 +806,18 @@ familiesRouter.post('/occupants/:id/documents/upload', upload.single('file'), as
   }
 });
 
-familiesRouter.post('/occupants/:id/ged-documents/:gedDocumentId/version', upload.single('file'), async (req, res) => {
+familiesRouter.post('/occupants/:id/ged-documents/:gedDocumentId/version', requireRoles(['SOCIAL']), upload.single('file'), async (req, res) => {
   const db = getDbPool();
   if (!db) return res.status(503).json({ error: 'Database unavailable.' });
 
   if (!req.file) {
     return res.status(400).json({ error: 'Missing file.' });
+  }
+
+  const uploadValidationError = validateUploadedFile(req.file);
+  if (uploadValidationError) {
+    removeUploadedFileSafe(req.file.path);
+    return res.status(400).json({ error: uploadValidationError });
   }
 
   const client = await db.connect();
@@ -868,6 +924,88 @@ familiesRouter.post('/occupants/:id/ged-documents/:gedDocumentId/version', uploa
       file_name: req.file.originalname,
       file_url: fileUrl,
     });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+});
+
+familiesRouter.patch('/occupants/:id/ged-documents/:gedDocumentId/status', requireRoles(['JURIDICO']), async (req, res) => {
+  const db = getDbPool();
+  if (!db) return res.status(503).json({ error: 'Database unavailable.' });
+
+  const parsed = gedStatusUpdateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'Invalid status payload.', details: parsed.error.flatten() });
+  }
+
+  const occupantId = String(req.params.id);
+  const gedDocumentId = String(req.params.gedDocumentId);
+
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+
+    const gedCheck = await client.query(
+      `SELECT id, status
+       FROM ged_documents
+       WHERE id = $1
+         AND metadata->>'occupant_id' = $2
+       FOR UPDATE`,
+      [gedDocumentId, occupantId]
+    );
+
+    if (!gedCheck.rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'GED document not found for occupant.' });
+    }
+
+    const currentStatus = String(gedCheck.rows[0].status);
+    const nextStatus = normalizeGedStatus(parsed.data.status);
+    const allowed = allowedGedStatusTransitions[currentStatus] ?? [];
+    if (!allowed.includes(nextStatus) && currentStatus !== nextStatus) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error: 'Invalid status transition.',
+        details: { currentStatus, nextStatus, allowedTransitions: allowed },
+      });
+    }
+
+    const updated = await client.query(
+      `UPDATE ged_documents
+       SET status = $2,
+           updated_at = now(),
+           metadata = jsonb_set(
+             COALESCE(metadata, '{}'::jsonb),
+             '{status_reason}',
+             to_jsonb($3::text),
+             true
+           )
+       WHERE id = $1
+       RETURNING id, status, current_version`,
+      [gedDocumentId, nextStatus, parsed.data.reason ?? null]
+    );
+
+    await client.query('COMMIT');
+
+    await insertSecurityAuditLog({
+      userId: req.user?.id,
+      action: 'family.ged.status.update',
+      resource: 'ged_document',
+      resourceId: gedDocumentId,
+      status: 'success',
+      ipAddress: req.ip,
+      details: {
+        occupantId,
+        previousStatus: currentStatus,
+        nextStatus,
+        reason: parsed.data.reason ?? null,
+      },
+    });
+
+    return res.json(updated.rows[0]);
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
