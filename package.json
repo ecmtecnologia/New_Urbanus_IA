@@ -1,0 +1,49 @@
+{
+  "name": "urbanus-ia---gestão-inteligente-de-regularização-fundiária",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:server": "tsx watch server/index.ts",
+    "dev:all": "concurrently -k \"npm run dev\" \"npm run dev:server\"",
+    "build:client": "vite build",
+    "build:server": "tsup server/index.ts --tsconfig server/tsconfig.json --format esm --platform node --target node20 --out-dir dist-server",
+    "build": "npm run build:client && npm run build:server",
+    "start:server": "node dist-server/index.js",
+    "db:migrate": "tsx server/scripts/migrate.ts",
+    "db:check": "tsx server/scripts/check-db.ts",
+    "lint": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p server/tsconfig.json",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@google/genai": "^1.41.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^5.1.0",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.1",
+    "pg": "^8.16.3",
+    "bcryptjs": "^3.0.2",
+    "zod": "^4.1.12",
+    "react": "^19.2.4",
+    "recharts": "^3.7.0",
+    "lucide-react": "^0.563.0",
+    "react-dom": "^19.2.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.5",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/morgan": "^1.9.10",
+    "@types/pg": "^8.15.5",
+    "@vitejs/plugin-react": "^5.0.0",
+    "concurrently": "^9.2.1",
+    "tsup": "^8.5.0",
+    "tsx": "^4.20.6",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
+  }
+}

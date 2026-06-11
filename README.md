@@ -1,11 +1,55 @@
-<div align="center">
+# Urbanus IA (Frontend + API + Database)
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+Plataforma de regularizacao fundiaria com modulos REURB-E/S, Rural, GIS, GED/ECM e assistente de IA Aisha.
 
-  <h1>Built with AI Studio</h2>
+## Arquitetura atual
 
-  <p>The fastest path from prompt to production with Gemini.</p>
+- Frontend: React + Vite
+- Backend API: Express + TypeScript
+- IA: Gemini via proxy seguro no backend
+- Banco: PostgreSQL + PostGIS
 
-  <a href="https://aistudio.google.com/apps">Start building</a>
+## Pre-requisitos
 
-</div>
+- Node.js 20+
+- PostgreSQL 15+
+- Extensao PostGIS habilitada
+
+## Configuracao inicial
+
+1. Instale dependencias:
+   `npm install`
+2. Crie o arquivo de ambiente a partir do modelo:
+   `copy .env.example .env`
+3. Ajuste variaveis no `.env`:
+   - `GEMINI_API_KEY`
+   - `DATABASE_URL`
+   - `JWT_SECRET`
+
+## Banco de dados
+
+As migracoes estao em `database/migrations`.
+
+1. Validar conexao:
+   `npm run db:check`
+2. Executar migracoes:
+   `npm run db:migrate`
+
+## Desenvolvimento
+
+- Frontend apenas:
+  `npm run dev`
+- API apenas:
+  `npm run dev:server`
+- Frontend + API juntos:
+  `npm run dev:all`
+
+## Build
+
+`npm run build`
+
+## Endpoints principais
+
+- Health API: `GET /api/health`
+- Health banco: `GET /api/health/db`
+- Aisha (proxy seguro): `POST /api/aisha/analyze`

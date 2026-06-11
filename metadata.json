@@ -1,0 +1,7 @@
+{
+  "name": "Urbanus IA - Gestão Inteligente de Regularização Fundiária",
+  "description": "Plataforma avançada para regularização fundiária urbana baseada na Lei 13.465/2017, utilizando IA para análise de conformidade, detecção de inconsistências e predição de gargalos registrais.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
