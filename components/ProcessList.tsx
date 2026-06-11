@@ -32,12 +32,35 @@ const ProcessList: React.FC<ProcessListProps> = ({ onAnalyze, onViewMap, onOpenF
   const [searchTerm, setSearchTerm] = useState('');
   const [apiError, setApiError] = useState<string | null>(null);
 
+  const normalizeProcess = (process: Partial<ReurbProcess> & { id: string }): ReurbProcess => ({
+    id: process.id,
+    title: process.title ?? 'Processo sem título',
+    type: process.type ?? ReurbType.SOCIAL,
+    status: process.status ?? ProcessStatus.TRIAGEM,
+    neighborhood: process.neighborhood ?? '',
+    riskLevel: process.riskLevel ?? 'Low',
+    aiInsights: process.aiInsights?.length ? process.aiInsights : ['Sem análises disponíveis'],
+    createdAt: process.createdAt ?? new Date().toISOString().split('T')[0],
+    property: process.property ?? {
+      id: crypto.randomUUID(),
+      cadastralCode: 'N/D',
+      zone: '',
+      sector: '',
+      block: '',
+      area_sqm: 0,
+      units: [],
+      confrontantes_lista: [],
+      confrontantes: { norte: '', sul: '', leste: '', oeste: '' },
+    },
+    occupant: process.occupant ?? { name: 'Beneficiário não informado', cpf: '', income: 0 },
+  });
+
   useEffect(() => {
     const loadFromApi = async () => {
       try {
         const items = await listProcesses();
         if (items.length > 0) {
-          setProcesses(items);
+          setProcesses(items.map((item) => normalizeProcess(item as ReurbProcess)));
         }
       } catch {
         setApiError('API de processos indisponível. Operando em modo local temporário.');
@@ -61,13 +84,13 @@ const ProcessList: React.FC<ProcessListProps> = ({ onAnalyze, onViewMap, onOpenF
   useEffect(() => {
     if (editingProcess) {
       setFormData({
-        cadastralCode: editingProcess.property.cadastralCode,
-        neighborhood: editingProcess.neighborhood,
-        occupantName: editingProcess.occupant.name,
-        cpf: editingProcess.occupant.cpf,
-        income: editingProcess.occupant.income.toString(),
-        area: editingProcess.property.area_sqm.toString(),
-        type: editingProcess.type
+        cadastralCode: editingProcess.property?.cadastralCode ?? '',
+        neighborhood: editingProcess.neighborhood ?? '',
+        occupantName: editingProcess.occupant?.name ?? '',
+        cpf: editingProcess.occupant?.cpf ?? '',
+        income: String(editingProcess.occupant?.income ?? ''),
+        area: String(editingProcess.property?.area_sqm ?? ''),
+        type: editingProcess.type ?? ReurbType.SOCIAL
       });
     } else {
       setFormData({
@@ -184,8 +207,8 @@ const ProcessList: React.FC<ProcessListProps> = ({ onAnalyze, onViewMap, onOpenF
   };
 
   const filteredProcesses = processes.filter(p => 
-    p.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    p.occupant.name.toLowerCase().includes(searchTerm.toLowerCase())
+    (p.title ?? '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+    (p.occupant?.name ?? '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -244,7 +267,7 @@ const ProcessList: React.FC<ProcessListProps> = ({ onAnalyze, onViewMap, onOpenF
               {filteredProcesses.map((process) => (
                 <tr key={process.id} className="hover:bg-emerald-50/30 transition-colors group">
                   <td className="px-8 py-5">
-                    <p className="font-bold text-slate-900">{process.title}</p>
+                    <p className="font-bold text-slate-900">{process.title ?? 'Processo sem título'}</p>
                     <p className="text-[10px] font-medium text-slate-400 mt-1 uppercase tracking-tight">Protocolado em {process.createdAt}</p>
                   </td>
                   <td className="px-6 py-5">
@@ -257,8 +280,8 @@ const ProcessList: React.FC<ProcessListProps> = ({ onAnalyze, onViewMap, onOpenF
                     </span>
                   </td>
                   <td className="px-6 py-5">
-                    <p className="text-sm font-bold text-slate-700">{process.occupant.name}</p>
-                    <p className="text-[10px] font-mono text-slate-400 mt-0.5">{process.occupant.cpf}</p>
+                    <p className="text-sm font-bold text-slate-700">{process.occupant?.name ?? 'Beneficiário não informado'}</p>
+                    <p className="text-[10px] font-mono text-slate-400 mt-0.5">{process.occupant?.cpf ?? 'CPF não informado'}</p>
                   </td>
                   <td className="px-6 py-5">
                     <div className="flex items-center gap-2">
@@ -273,7 +296,7 @@ const ProcessList: React.FC<ProcessListProps> = ({ onAnalyze, onViewMap, onOpenF
                     }`}>
                       {process.riskLevel === 'High' && <ShieldAlert className="w-3.5 h-3.5" />}
                       {process.riskLevel === 'Low' && <CheckCircle2 className="w-3.5 h-3.5" />}
-                      <span className="text-[10px] font-black uppercase tracking-tight">{process.aiInsights[0]}</span>
+                      <span className="text-[10px] font-black uppercase tracking-tight">{process.aiInsights?.[0] ?? 'Sem análises disponíveis'}</span>
                     </div>
                   </td>
                   <td className="px-8 py-5 text-right">
