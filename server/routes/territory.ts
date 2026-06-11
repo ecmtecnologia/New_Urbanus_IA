@@ -178,6 +178,29 @@ territoryRouter.post('/sectors', async (req, res) => {
   res.status(201).json(result.rows[0]);
 });
 
+territoryRouter.delete('/sectors/:id', async (req, res) => {
+  const db = getDbPool();
+  if (!db) return res.status(503).json({ error: 'Database unavailable.' });
+
+  const { id } = req.params;
+  const result = await db.query('DELETE FROM territory_sectors WHERE id = $1', [id]);
+
+  if (!result.rowCount) {
+    return res.status(404).json({ error: 'Sector not found.' });
+  }
+
+  await insertSecurityAuditLog({
+    userId: req.user?.id,
+    action: 'territory.sector.delete',
+    resource: 'territory_sector',
+    resourceId: id,
+    status: 'success',
+    ipAddress: req.ip,
+  });
+
+  res.status(204).send();
+});
+
 // BLOCKS
 territoryRouter.get('/blocks', async (_req, res) => {
   const db = getDbPool();
@@ -217,6 +240,29 @@ territoryRouter.post('/blocks', async (req, res) => {
   });
 
   res.status(201).json(result.rows[0]);
+});
+
+territoryRouter.delete('/blocks/:id', async (req, res) => {
+  const db = getDbPool();
+  if (!db) return res.status(503).json({ error: 'Database unavailable.' });
+
+  const { id } = req.params;
+  const result = await db.query('DELETE FROM territory_blocks WHERE id = $1', [id]);
+
+  if (!result.rowCount) {
+    return res.status(404).json({ error: 'Block not found.' });
+  }
+
+  await insertSecurityAuditLog({
+    userId: req.user?.id,
+    action: 'territory.block.delete',
+    resource: 'territory_block',
+    resourceId: id,
+    status: 'success',
+    ipAddress: req.ip,
+  });
+
+  res.status(204).send();
 });
 
 // PROPERTIES

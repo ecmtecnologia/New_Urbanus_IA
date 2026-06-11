@@ -22,7 +22,7 @@ import {
   Loader
 } from 'lucide-react';
 import LotEditor from './LotEditor';
-import { Zone, Sector, Block, Property, listZones, createZone, deleteZone, listSectors, createSector, listBlocks, createBlock, listProperties, deleteProperty } from '../services/territoryService';
+import { Zone, Sector, Block, Property, listZones, createZone, deleteZone, listSectors, createSector, deleteSector, listBlocks, createBlock, deleteBlock, listProperties, deleteProperty } from '../services/territoryService';
 
 type ViewMode = 'ZONES' | 'SECTORS' | 'BLOCKS' | 'LOTS';
 
@@ -126,7 +126,13 @@ const TerritoryManager: React.FC = () => {
     if (!confirm('Tem certeza que deseja excluir este item?')) return;
     try {
       setLoading(true);
-      if (viewMode === 'LOTS') {
+      if (viewMode === 'SECTORS') {
+        await deleteSector(id);
+        await loadData();
+      } else if (viewMode === 'BLOCKS') {
+        await deleteBlock(id);
+        await loadData();
+      } else if (viewMode === 'LOTS') {
         await deleteProperty(id);
         await loadData();
       }
@@ -256,6 +262,7 @@ const TerritoryManager: React.FC = () => {
                     </div>
                     <div className="flex gap-2 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
                        <button onClick={(e) => { e.stopPropagation(); setEditItem(sector); setShowModal(true); }} className="p-2.5 bg-white border border-slate-200 rounded-xl hover:border-emerald-500 hover:text-emerald-600 transition-all shadow-sm"><Edit3 className="w-4 h-4" /></button>
+                        <button onClick={(e) => { e.stopPropagation(); handleDelete(sector.id); }} className="p-2.5 bg-white border border-slate-200 rounded-xl hover:border-rose-500 hover:text-rose-600 transition-all shadow-sm"><Trash2 className="w-4 h-4" /></button>
                     </div>
                     <ChevronRight className="w-5 h-5 text-slate-300 hidden md:block" />
                   </div>
@@ -280,6 +287,7 @@ const TerritoryManager: React.FC = () => {
                     </div>
                     <div className="flex gap-2 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
                        <button onClick={(e) => { e.stopPropagation(); setEditItem(block); setShowModal(true); }} className="p-2.5 bg-white border border-slate-200 rounded-xl hover:border-emerald-500 hover:text-emerald-600 transition-all shadow-sm"><Edit3 className="w-4 h-4" /></button>
+                        <button onClick={(e) => { e.stopPropagation(); handleDelete(block.id); }} className="p-2.5 bg-white border border-slate-200 rounded-xl hover:border-rose-500 hover:text-rose-600 transition-all shadow-sm"><Trash2 className="w-4 h-4" /></button>
                     </div>
                     <ChevronRight className="w-5 h-5 text-slate-300 hidden md:block" />
                   </div>

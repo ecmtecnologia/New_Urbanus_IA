@@ -17,18 +17,23 @@ import {
   PenTool,
   Eraser
 } from 'lucide-react';
+import { createOccupant, deleteOccupant, listOccupants, updateOccupant, uploadOccupantDocument, uploadOccupantGedDocumentVersion, listOccupantGedDocumentVersions } from '../services/familyService';
 
 type TabType = 'RESPONSAVEL' | 'ENDERECO' | 'MEMBROS' | 'DOCUMENTOS' | 'CONTATOS';
 
 interface FamilyManagerProps {
   onCancel?: () => void;
+  initialProcessId?: string | null;
 }
 
-const FamilyManager: React.FC<FamilyManagerProps> = ({ onCancel }) => {
+const FamilyManager: React.FC<FamilyManagerProps> = ({ onCancel, initialProcessId = null }) => {
   const [activeTab, setActiveTab] = useState<TabType>('RESPONSAVEL');
   const [showSignatureModal, setShowSignatureModal] = useState(false);
   const signatureCanvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
+  const [occupantId, setOccupantId] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   
   // State Unificado para o Ocupante
   const [familyData, setFamilyData] = useState({
@@ -73,10 +78,274 @@ const FamilyManager: React.FC<FamilyManagerProps> = ({ onCancel }) => {
   const [newMember, setNewMember] = useState({ nome: '', parentesco: '', cpf: '', nascimento: '' });
   const [newDoc, setNewDoc] = useState({ tipo: '', numero: '', arquivo: null as any });
   const [newContact, setNewContact] = useState({ telefone: '', email: '' });
+  const [documentVersions, setDocumentVersions] = useState<Record<string, any[]>>({});
+  const [loadingVersionsFor, setLoadingVersionsFor] = useState<string | null>(null);
 
-  const handleSaveAll = () => {
-    alert('Alterações salvas com sucesso na Base de Dados Unificada!');
-    if (onCancel) onCancel();
+  const handleLoadVersions = async (documentId: string, gedDocumentId?: string) => {
+    if (!occupantId || !gedDocumentId) {
+      return;
+    }
+
+    try {
+      setLoadingVersionsFor(documentId);
+      const versions = await listOccupantGedDocumentVersions(occupantId, gedDocumentId);
+      setDocumentVersions((prev) => ({
+        ...prev,
+        [documentId]: versions,
+      }));
+    } catch (error: any) {
+      alert(`Falha ao carregar histórico de versões: ${error?.message ?? 'erro desconhecido'}`);
+    } finally {
+      setLoadingVersionsFor(null);
+    }
+  };
+
+  const handleUploadNewVersion = async (documentId: string, gedDocumentId?: string) => {
+    if (!occupantId) {
+      alert('Cadastro da família não encontrado.');
+      return;
+    }
+
+    if (!gedDocumentId) {
+      alert('Documento sem vínculo GED para versionar.');
+      return;
+    }
+
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf,.png,.jpg,.jpeg';
+
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+
+      try {
+        const result = await uploadOccupantGedDocumentVersion(occupantId, gedDocumentId, file);
+        setFamilyData({
+          ...familyData,
+          documentos: familyData.documentos.map((doc) => {
+            if (doc.id !== documentId) return doc;
+            return {
+              ...doc,
+              fileName: result.file_name,
+              fileUrl: result.file_url,
+              gedStatus: result.ged_status,
+              gedCurrentVersion: result.ged_current_version,
+            };
+          }),
+        });
+        alert('Nova versão enviada com sucesso ao GED.');
+      } catch (error: any) {
+        alert(`Falha ao enviar nova versão: ${error?.message ?? 'erro desconhecido'}`);
+      }
+    };
+
+    input.click();
+  };
+
+  const handleAttachDocument = async () => {
+    if (!newDoc.tipo) {
+      alert('Selecione o tipo de documento.');
+      return;
+    }
+
+    if (!occupantId) {
+      alert('Salve o cadastro da família primeiro para habilitar upload real de documentos.');
+      return;
+    }
+
+    if (!newDoc.arquivo) {
+      alert('Selecione um arquivo para upload.');
+      return;
+    }
+
+    try {
+      const uploaded = await uploadOccupantDocument(occupantId, newDoc.arquivo, {
+        document_type: newDoc.tipo,
+        document_number: newDoc.numero,
+      });
+
+      setFamilyData({
+        ...familyData,
+        documentos: [
+          {
+            id: uploaded.id,
+            tipo: uploaded.document_type,
+            numero: uploaded.document_number ?? '',
+            arquivo: null,
+            fileName: uploaded.file_name,
+            fileUrl: uploaded.file_url,
+            gedDocumentId: uploaded.ged_document_id,
+            gedStatus: uploaded.ged_status,
+            gedCurrentVersion: uploaded.ged_current_version,
+          },
+          ...familyData.documentos,
+        ],
+      });
+      setNewDoc({ tipo: '', numero: '', arquivo: null });
+    } catch (error: any) {
+      alert(`Falha no upload do documento: ${error?.message ?? 'erro desconhecido'}`);
+    }
+  };
+
+  useEffect(() => {
+    const loadInitialOccupant = async () => {
+      try {
+        const items = await listOccupants(initialProcessId ? { process_id: initialProcessId } : undefined);
+        if (!items.length) {
+          return;
+        }
+
+        const first = items[0] as any;
+        setOccupantId(first.id ?? null);
+        setFamilyData((prev) => ({
+          ...prev,
+          responsavel: {
+            ...prev.responsavel,
+            nome: first.name ?? prev.responsavel.nome,
+            cpf: first.cpf ?? prev.responsavel.cpf,
+            rg: first.rg ?? prev.responsavel.rg,
+            nascimento: first.birth_date ?? prev.responsavel.nascimento,
+            estadoCivil: first.civil_status ?? prev.responsavel.estadoCivil,
+            renda: first.monthly_income ? String(first.monthly_income) : prev.responsavel.renda,
+            integrantes: first.family_members_count ? String(first.family_members_count) : prev.responsavel.integrantes,
+            nis: first.nis_number ?? prev.responsavel.nis,
+            escolaridade: first.education_level ?? prev.responsavel.escolaridade,
+            profissao: first.profession ?? prev.responsavel.profissao,
+            conjuge: {
+              ...prev.responsavel.conjuge,
+              ...(first.spouse_data ?? {}),
+            },
+          },
+          membros: (first.members ?? []).map((member: any) => ({
+            id: member.id,
+            nome: member.name,
+            parentesco: member.relation,
+            cpf: member.cpf ?? '',
+            nascimento: member.birth_date ?? '',
+          })),
+          contatos: [
+            ...((first.contacts ?? []).map((contact: any) => ({
+              id: contact.id,
+              telefone: contact.phone ?? '',
+              email: contact.email ?? '',
+            }))),
+            ...((first.contacts ?? []).length === 0 ? [{ id: '1', telefone: first.phone ?? '', email: first.email ?? '' }] : []),
+          ],
+          documentos: (first.documents ?? []).map((document: any) => ({
+            id: document.id,
+            tipo: document.document_type,
+            numero: document.document_number ?? '',
+            arquivo: null,
+            fileName: document.file_name,
+            fileUrl: document.file_url,
+            gedDocumentId: document.ged_document_id,
+            gedStatus: document.ged_status,
+            gedCurrentVersion: document.ged_current_version,
+          })),
+          endereco: {
+            logradouro: first.address?.street ?? prev.endereco.logradouro,
+            numero: first.address?.number ?? prev.endereco.numero,
+            complemento: first.address?.complement ?? prev.endereco.complemento,
+            bairro: first.address?.neighborhood ?? prev.endereco.bairro,
+            cep: first.address?.zip_code ?? prev.endereco.cep,
+            cidade: first.address?.city ?? prev.endereco.cidade,
+            estado: first.address?.state ?? prev.endereco.estado,
+          },
+        }));
+      } catch (error) {
+        console.error('Erro ao carregar família inicial:', error);
+      }
+    };
+
+    void loadInitialOccupant();
+  }, []);
+
+  const handleSaveAll = async () => {
+    try {
+      setIsSaving(true);
+      const primaryContact = familyData.contatos[0] ?? { telefone: '', email: '' };
+      const payload = {
+        process_id: initialProcessId ?? undefined,
+        name: familyData.responsavel.nome,
+        cpf: familyData.responsavel.cpf,
+        rg: familyData.responsavel.rg,
+        birth_date: familyData.responsavel.nascimento,
+        civil_status: familyData.responsavel.estadoCivil,
+        monthly_income: familyData.responsavel.renda ? Number(familyData.responsavel.renda) : undefined,
+        nis_number: familyData.responsavel.nis,
+        profession: familyData.responsavel.profissao,
+        education_level: familyData.responsavel.escolaridade,
+        family_members_count: familyData.responsavel.integrantes ? Number(familyData.responsavel.integrantes) : undefined,
+        spouse_data: familyData.responsavel.conjuge,
+        phone: primaryContact.telefone,
+        email: primaryContact.email,
+        members: familyData.membros.map((member) => ({
+          name: member.nome,
+          relation: member.parentesco,
+          cpf: member.cpf,
+          birth_date: member.nascimento,
+        })),
+        contacts: familyData.contatos.map((contact, index) => ({
+          phone: contact.telefone,
+          email: contact.email,
+          is_primary: index === 0,
+        })),
+        documents: familyData.documentos.map((document) => ({
+          document_type: document.tipo,
+          document_number: document.numero,
+          file_name: document.fileName ?? document.arquivo?.name,
+          file_url: document.fileUrl,
+        })),
+        address: {
+          street: familyData.endereco.logradouro,
+          number: familyData.endereco.numero,
+          complement: familyData.endereco.complemento,
+          neighborhood: familyData.endereco.bairro,
+          zip_code: familyData.endereco.cep,
+          city: familyData.endereco.cidade,
+          state: familyData.endereco.estado,
+        },
+      };
+
+      if (occupantId) {
+        const updated = await updateOccupant(occupantId, payload);
+        setOccupantId(updated.id ?? occupantId);
+      } else {
+        const created = await createOccupant(payload);
+        setOccupantId(created.id ?? null);
+      }
+
+      alert('Alterações salvas com sucesso na Base de Dados Unificada!');
+      if (onCancel) onCancel();
+    } catch (error: any) {
+      alert(`Falha ao salvar família: ${error?.message ?? 'erro desconhecido'}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteFamily = async () => {
+    if (!occupantId) {
+      alert('Nenhum cadastro persistido para excluir.');
+      return;
+    }
+
+    const confirmed = confirm('Deseja realmente excluir este cadastro familiar? Esta ação não pode ser desfeita.');
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setIsDeleting(true);
+      await deleteOccupant(occupantId);
+      alert('Cadastro familiar excluído com sucesso.');
+      if (onCancel) onCancel();
+    } catch (error: any) {
+      alert(`Falha ao excluir família: ${error?.message ?? 'erro desconhecido'}`);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   // Signature Canvas Logic
@@ -308,39 +577,39 @@ const FamilyManager: React.FC<FamilyManagerProps> = ({ onCancel }) => {
       <div className="grid grid-cols-1 gap-6">
         <div>
           <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-1">Logradouro</label>
-          <input className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl text-slate-700 font-bold shadow-sm outline-none" value={familyData.endereco.logradouro} />
+          <input className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl text-slate-700 font-bold shadow-sm outline-none" value={familyData.endereco.logradouro} onChange={(e) => setFamilyData({ ...familyData, endereco: { ...familyData.endereco, logradouro: e.target.value } })} />
         </div>
         
         <div className="grid grid-cols-2 gap-6">
           <div>
             <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-1">Número</label>
-            <input className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl text-slate-700 font-bold shadow-sm outline-none" value={familyData.endereco.numero} />
+            <input className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl text-slate-700 font-bold shadow-sm outline-none" value={familyData.endereco.numero} onChange={(e) => setFamilyData({ ...familyData, endereco: { ...familyData.endereco, numero: e.target.value } })} />
           </div>
           <div>
             <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-1">Complemento</label>
-            <input className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl text-slate-700 font-bold shadow-sm outline-none" value={familyData.endereco.complemento} />
+            <input className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl text-slate-700 font-bold shadow-sm outline-none" value={familyData.endereco.complemento} onChange={(e) => setFamilyData({ ...familyData, endereco: { ...familyData.endereco, complemento: e.target.value } })} />
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-6">
           <div>
             <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-1">Bairro</label>
-            <input className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl text-slate-700 font-bold shadow-sm outline-none" value={familyData.endereco.bairro} />
+            <input className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl text-slate-700 font-bold shadow-sm outline-none" value={familyData.endereco.bairro} onChange={(e) => setFamilyData({ ...familyData, endereco: { ...familyData.endereco, bairro: e.target.value } })} />
           </div>
           <div>
             <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-1">CEP</label>
-            <input className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl text-slate-700 font-bold shadow-sm outline-none" value={familyData.endereco.cep} />
+            <input className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl text-slate-700 font-bold shadow-sm outline-none" value={familyData.endereco.cep} onChange={(e) => setFamilyData({ ...familyData, endereco: { ...familyData.endereco, cep: e.target.value } })} />
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-6">
           <div>
             <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-1">Cidade</label>
-            <input className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl text-slate-700 font-bold shadow-sm outline-none" value={familyData.endereco.cidade} />
+            <input className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl text-slate-700 font-bold shadow-sm outline-none" value={familyData.endereco.cidade} onChange={(e) => setFamilyData({ ...familyData, endereco: { ...familyData.endereco, cidade: e.target.value } })} />
           </div>
           <div>
             <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-1">Estado</label>
-            <input className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl text-slate-700 font-bold shadow-sm outline-none" value={familyData.endereco.estado} />
+            <input className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl text-slate-700 font-bold shadow-sm outline-none" value={familyData.endereco.estado} onChange={(e) => setFamilyData({ ...familyData, endereco: { ...familyData.endereco, estado: e.target.value } })} />
           </div>
         </div>
       </div>
@@ -485,23 +754,25 @@ const FamilyManager: React.FC<FamilyManagerProps> = ({ onCancel }) => {
             <div className="flex items-center gap-3">
                <label className="flex-1 px-5 py-4 bg-emerald-50 border border-emerald-100 rounded-2xl text-emerald-700 font-black text-[10px] uppercase tracking-widest cursor-pointer hover:bg-emerald-100 transition-all flex items-center justify-center gap-2">
                   <Paperclip className="w-3 h-3" /> Escolher Ficheiro
-                  <input type="file" className="hidden" />
+                  <input
+                    type="file"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] ?? null;
+                      setNewDoc({ ...newDoc, arquivo: file });
+                    }}
+                  />
                </label>
-               <span className="text-[8px] text-slate-400 italic">Nenhum selecionado</span>
+               <span className="text-[8px] text-slate-400 italic">{newDoc.arquivo?.name ?? 'Nenhum selecionado'}</span>
             </div>
           </div>
         </div>
         <div className="flex justify-end mt-8">
           <button 
-            onClick={() => {
-              if (newDoc.tipo) {
-                setFamilyData({...familyData, documentos: [...familyData.documentos, {...newDoc, id: Date.now().toString()}]});
-                setNewDoc({ tipo: '', numero: '', arquivo: null });
-              }
-            }}
+            onClick={handleAttachDocument}
             className="px-12 py-4 bg-emerald-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-emerald-500 transition-all shadow-lg shadow-emerald-900/20"
           >
-            Anexar Arquivo
+            Upload no GED
           </button>
         </div>
       </div>
@@ -518,17 +789,79 @@ const FamilyManager: React.FC<FamilyManagerProps> = ({ onCancel }) => {
         ) : (
           <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-4">
              {familyData.documentos.map(d => (
-               <div key={d.id} className="p-5 bg-white border border-slate-100 rounded-3xl flex justify-between items-center shadow-sm">
+              <div key={d.id} className="p-5 bg-white border border-slate-100 rounded-3xl shadow-sm">
+                <div className="flex items-center justify-between gap-4">
                   <div className="flex items-center gap-4">
                      <FileText className="w-6 h-6 text-emerald-600" />
                      <div>
                         <p className="font-bold text-slate-900">{d.tipo}</p>
                         <p className="text-[10px] text-slate-500 uppercase font-black">Nº {d.numero || 'S/N'}</p>
+                        {d.fileName && <p className="text-[10px] text-slate-400">{d.fileName}</p>}
+                        {d.gedDocumentId && (
+                          <p className="text-[10px] text-blue-600 font-black uppercase">
+                            GED {d.gedStatus ?? 'Pendente'} | v{d.gedCurrentVersion ?? 1}
+                          </p>
+                        )}
+                        {d.fileUrl && (
+                          <a
+                            href={d.fileUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[10px] font-black text-emerald-600 hover:underline uppercase"
+                          >
+                            Visualizar arquivo
+                          </a>
+                        )}
                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => setFamilyData({...familyData, documentos: familyData.documentos.filter(x => x.id !== d.id)})} className="p-2 text-rose-400 hover:bg-rose-50 rounded-lg transition-all">
+                         <Trash2 className="w-4 h-4" />
+                      </button>
+                      {d.gedDocumentId && (
+                        <button
+                          onClick={() => handleUploadNewVersion(d.id, d.gedDocumentId)}
+                          className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-all"
+                          title="Enviar nova versão"
+                        >
+                          <Paperclip className="w-4 h-4" />
+                        </button>
+                      )}
+                      {d.gedDocumentId && (
+                        <button
+                          onClick={() => handleLoadVersions(d.id, d.gedDocumentId)}
+                          className="p-2 text-slate-500 hover:bg-slate-50 rounded-lg transition-all"
+                          title="Ver histórico"
+                        >
+                          <Calendar className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <button onClick={() => setFamilyData({...familyData, documentos: familyData.documentos.filter(x => x.id !== d.id)})} className="p-2 text-rose-400 hover:bg-rose-50 rounded-lg transition-all">
-                     <Trash2 className="w-4 h-4" />
-                  </button>
+                  {loadingVersionsFor === d.id && (
+                    <p className="mt-3 text-[10px] text-slate-400">Carregando histórico...</p>
+                  )}
+                  {(documentVersions[d.id]?.length ?? 0) > 0 && (
+                    <div className="mt-3 pt-3 border-t border-slate-100 text-[10px] text-slate-500 space-y-1">
+                      {documentVersions[d.id].map((version: any) => (
+                        <div key={version.id} className="flex items-center justify-between gap-3">
+                          <p>
+                            v{version.version_number} - {version.file_name} - {new Date(version.created_at).toLocaleString('pt-BR')}
+                          </p>
+                          {version.file_url && (
+                            <a
+                              href={version.file_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="font-black text-emerald-600 hover:underline uppercase"
+                            >
+                              Download
+                            </a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                </div>
              ))}
           </div>
@@ -651,6 +984,13 @@ const FamilyManager: React.FC<FamilyManagerProps> = ({ onCancel }) => {
 
       {/* Footer Fiel às imagens com botão verde flutuante */}
       <div className="p-10 pt-4 flex justify-end items-center gap-8 border-t border-slate-50">
+        <button
+          onClick={handleDeleteFamily}
+          disabled={!occupantId || isDeleting || isSaving}
+          className="px-6 py-3 bg-rose-50 text-rose-700 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-rose-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {isDeleting ? 'Excluindo...' : 'Excluir Família'}
+        </button>
         <button 
           onClick={onCancel}
           className="text-xs font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors"
@@ -659,9 +999,10 @@ const FamilyManager: React.FC<FamilyManagerProps> = ({ onCancel }) => {
         </button>
         <button 
           onClick={handleSaveAll}
+          disabled={isSaving}
           className="px-10 py-4 bg-emerald-600 text-white rounded-[1.5rem] font-black text-xs uppercase tracking-widest hover:bg-emerald-500 transition-all shadow-xl shadow-emerald-900/30 flex items-center gap-2"
         >
-          Salvar Alterações
+          {isSaving ? 'Salvando...' : 'Salvar Alterações'}
         </button>
       </div>
 

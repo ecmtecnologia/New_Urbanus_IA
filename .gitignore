@@ -30,3 +30,6 @@ dist-server
 
 # arquivos grandes locais
 *.mp4
+uploads/
+provisorio/
+tmp-*.txt

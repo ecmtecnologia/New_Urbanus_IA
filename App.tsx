@@ -38,7 +38,13 @@ const AppContent: React.FC = () => {
       case 'dashboard':
         return <Dashboard />;
       case 'processes':
-        return <ProcessList onAnalyze={(id) => handleNavigateToProcess(id, 'analyst')} onViewMap={(id) => handleNavigateToProcess(id, 'gis')} />;
+        return (
+          <ProcessList
+            onAnalyze={(id) => handleNavigateToProcess(id, 'analyst')}
+            onViewMap={(id) => handleNavigateToProcess(id, 'gis')}
+            onOpenFamily={(id) => handleNavigateToProcess(id, 'portal')}
+          />
+        );
       case 'ged':
         return <GEDModule />;
       case 'territory':
@@ -60,7 +66,7 @@ const AppContent: React.FC = () => {
       case 'users':
         return <UserManagement />;
       case 'portal':
-        return <FamilyManager onCancel={() => setActiveTab('processes')} />;
+        return <FamilyManager initialProcessId={selectedProcessId} onCancel={() => setActiveTab('processes')} />;
       case 'security':
         return <SecurityModule />;
       case 'database':

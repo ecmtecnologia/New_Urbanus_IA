@@ -103,6 +103,14 @@ export async function createSector(sector: Omit<Sector, 'id' | 'created_at'>): P
   return response.json();
 }
 
+export async function deleteSector(id: string): Promise<void> {
+  const response = await fetch(`/api/territory/sectors/${id}`, {
+    method: 'DELETE',
+    headers: { 'Authorization': `Bearer ${getToken()}` },
+  });
+  if (!response.ok) throw new Error(`Failed to delete sector: ${response.statusText}`);
+}
+
 export async function listBlocks(): Promise<Block[]> {
   const response = await fetch('/api/territory/blocks', {
     headers: { 'Authorization': `Bearer ${getToken()}` },
@@ -123,6 +131,14 @@ export async function createBlock(block: Omit<Block, 'id'>): Promise<Block> {
   });
   if (!response.ok) throw new Error(`Failed to create block: ${response.statusText}`);
   return response.json();
+}
+
+export async function deleteBlock(id: string): Promise<void> {
+  const response = await fetch(`/api/territory/blocks/${id}`, {
+    method: 'DELETE',
+    headers: { 'Authorization': `Bearer ${getToken()}` },
+  });
+  if (!response.ok) throw new Error(`Failed to delete block: ${response.statusText}`);
 }
 
 export async function listProperties(): Promise<Property[]> {

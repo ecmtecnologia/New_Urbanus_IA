@@ -22,9 +22,10 @@ import {
 interface ProcessListProps {
   onAnalyze: (id: string) => void;
   onViewMap: (id: string) => void;
+  onOpenFamily: (id: string) => void;
 }
 
-const ProcessList: React.FC<ProcessListProps> = ({ onAnalyze, onViewMap }) => {
+const ProcessList: React.FC<ProcessListProps> = ({ onAnalyze, onViewMap, onOpenFamily }) => {
   const [processes, setProcesses] = useState<ReurbProcess[]>(MOCK_PROCESSES);
   const [showModal, setShowModal] = useState(false);
   const [editingProcess, setEditingProcess] = useState<ReurbProcess | null>(null);
@@ -290,6 +291,13 @@ const ProcessList: React.FC<ProcessListProps> = ({ onAnalyze, onViewMap }) => {
                           className="p-2.5 bg-white border border-slate-200 rounded-xl text-blue-600 hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shadow-sm"
                         >
                             <MapIcon className="w-4 h-4" />
+                        </button>
+                        <button 
+                          onClick={() => onOpenFamily(process.id)}
+                          title="Abrir Cadastro Social"
+                          className="p-2.5 bg-white border border-slate-200 rounded-xl text-indigo-600 hover:bg-indigo-600 hover:text-white hover:border-indigo-600 transition-all shadow-sm"
+                        >
+                            <User className="w-4 h-4" />
                         </button>
                         <div className="w-px h-8 bg-slate-200 mx-1"></div>
                         <button 
